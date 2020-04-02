@@ -14,19 +14,21 @@ import os
 
 def main():
     
-    SimulationName="SC2"
-    nl=30   
+    SimulationName="2D"
+    nl=30       #neuroni per lato
     N=nl*nl
     ms=np.linspace(2,20,10)
-    gammas=np.linspace(0,0.8,9) 
-    samples=5 #iterations for each gamma and m
-    L=10.0
+    gammas=[0.,0.1,0.2,0.3,0.4,0.5,0.6,0.7]     
+    samples=5          #iterations for each gamma and m
+    L=20.0
     f=0.3
+    #fs=[0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,0.8]
     
     #CREATE SIMULATION FOLDER
     if not os.path.exists(SimulationName):
         os.makedirs(SimulationName)
     
+    #OVERLAPS
     print("Starting ...")
     overlaps=np.zeros((len(ms),len(gammas),samples))
     for i in range(len(ms)):
@@ -36,23 +38,32 @@ def main():
                 gamma=gammas[j]
                 print("Computing retrieval for nmaps="+str(m)+" gamma="+str(gamma)+" sample n: "+str(k+1))
                 grid=RegularPfc(N,L,m)
-                np.save(SimulationName+"/pfc_"+str(i)+str(j+9)+str(k),grid)
+                np.save(SimulationName+"/pfc_"+str(i)+str(j)+str(k),grid)
                 J=BuildJ(N,grid,L,gamma)
-                Vfinal=compute_retrieval(grid,N,L,f,J)
-                np.save(SimulationName+"/Vfinal_"+str(i)+str(j+9)+str(k),Vfinal)
+                Vfinal, th, mean=compute_retrieval(grid,N,L,f,J)
+                np.save(SimulationName+"/Vfinal_"+str(i)+str(j)+str(k),Vfinal)
                 overlaps=calculate_overlaps(Vfinal,grid,L)
-                np.save(SimulationName+"/overlaps_"+str(i)+str(j+9)+str(k),overlaps)
+                np.save(SimulationName+"/overlaps_"+str(i)+str(j)+str(k),overlaps)
     print("Dynamics terminated, result saved")
+    
+    
+    #MULTIPLE fs
+    '''
+    for g in range(len(gammas)):
+        for f in range(len(fs)):
+            print("Running for g="+str(gammas[g])+" f["+str(f)+"]")
+            grid=RegularPfc(N,L,m) # defines environment
+            np.save(SimulationName+"/g"+str(gammas[g])+"_pfc_f"+str(fs[f]),grid)
+            J=BuildJ(N,grid,L,gammas[g]) # Builds connectivity
+            Vfinal, th, mean=compute_retrieval(grid,N,L,fs[f],J)
+            np.save(SimulationName+"/g"+str(gammas[g])+"_Vfinal_f"+str(fs[f]),Vfinal)
+            np.save(SimulationName+"/g"+str(gammas[g])+"_Threshold_f"+str(fs[f]),th)
+            np.save(SimulationName+"/g"+str(gammas[g])+"_mean_f"+str(fs[f]),mean)
+    print("Dynamics terminated, result saved")
+    #'''
     
     return
 
-
-def compute_retrieval(grid,N,L,f,J):
-	#V=np.random.uniform(0,1,N)
-	V=correlate_activity(grid[0],L)
-	V=V/np.mean(V)
-	Vfinal=dynamics_storage(f,V,N,J)
-	return Vfinal
 
 # FUNCTIONS
     
@@ -137,16 +148,25 @@ def dynamics(f,V,N,J):
             Vvec[step][:]=V
             #print("Dynamic step: "+str(step)+" done, mean: "+str(np.mean(V))+" sparsity: "+str(pow(np.mean(V),2)/np.mean(pow(V,2))))
         return Vvec
-        
+    
+def compute_retrieval(grid,N,L,f,J):
+	#V=np.random.uniform(0,1,N)
+	V=correlate_activity(grid[0],L)
+	V=V/np.mean(V)
+	Vfinal, th, mean=dynamics_storage(f,V,N,J)
+	return Vfinal, th, mean
+
 def dynamics_storage(f,V,N,J): 
-        maxsteps=60
+        maxsteps=200
         for step in range(maxsteps):
             h=np.dot(J,V)
             V=np.asarray(list(map(lambda h: transfer(h),h)))
+            th=np.percentile(V,(1.0-f)*100)
             V=Sparsify(V,f)
+            mean=np.mean(V)
             V=V/np.mean(V)
             #print("Dynamic step: "+str(step)+" done, mean: "+str(np.mean(V))+" sparsity: "+str(pow(np.mean(V),2)/np.mean(pow(V,2))))
-        return V
+        return V, th, mean
 
 def calculate_overlaps(V,grid,L):
 	overlaps=np.zeros(len(grid))
